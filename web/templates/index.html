@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catan LLM Evaluation Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎲 Catan LLM Evaluation Dashboard</h1>
+            <p class="subtitle">Evaluating Language Models through Strategic Gameplay</p>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Leaderboard Section -->
+            <section class="leaderboard-section card">
+                <h2>🏆 Model Leaderboard</h2>
+                <div id="leaderboard-container">
+                    <table id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Model</th>
+                                <th>Elo Rating</th>
+                                <th>Games</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="last-updated">Last updated: <span id="last-updated">Never</span></div>
+            </section>
+
+            <!-- Active Games Section -->
+            <section class="active-games-section card">
+                <h2>🎮 Active Games</h2>
+                <div id="active-games-container">
+                    <div id="active-games-list">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Rating Chart Section -->
+            <section class="chart-section card">
+                <h2>📊 Rating Distribution</h2>
+                <canvas id="rating-chart"></canvas>
+            </section>
+
+            <!-- Recent Games Section -->
+            <section class="recent-games-section card">
+                <h2>📜 Recent Games</h2>
+                <div id="recent-games-container">
+                    <div id="recent-games-list">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Game Detail Modal -->
+        <div id="game-modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2>Game Details</h2>
+                <div id="game-details">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-item">
+                <span class="status-indicator" id="connection-status"></span>
+                <span id="connection-text">Disconnected</span>
+            </div>
+            <div class="status-item">
+                Total Games: <span id="total-games">0</span>
+            </div>
+            <div class="status-item">
+                Active Games: <span id="active-game-count">0</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
