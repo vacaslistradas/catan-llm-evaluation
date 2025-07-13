@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import List, Dict, Optional, Union
 import aiohttp
 from openai import AsyncOpenAI
@@ -39,8 +40,14 @@ Your task is to choose the best action from the legal actions list. Consider:
 4. Victory point progression
 5. Trade opportunities
 
-Respond with ONLY a JSON object containing the chosen action index and brief reasoning:
-{"action_index": 0, "reasoning": "Brief explanation"}"""
+You MUST respond with ONLY a valid JSON object in this exact format:
+{"action_index": 0, "reasoning": "Brief explanation"}
+
+Where:
+- action_index: An integer from 0 to (number of legal actions - 1)
+- reasoning: A brief string explaining your choice
+
+Do not include any text before or after the JSON object. The response must be valid JSON that can be parsed."""
         
         # Format game state for LLM
         user_prompt = self._format_game_state(game_state, legal_actions, game_history)
@@ -52,18 +59,41 @@ Respond with ONLY a JSON object containing the chosen action index and brief rea
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=150,
-                response_format={"type": "json_object"}
+                temperature=0.7
+                # No max_tokens limit - let models use as many as they need
+                # No response_format - we'll parse JSON manually
             )
             
             # Parse response
-            content = response.choices[0].message.content
-            decision = json.loads(content)
+            content = response.choices[0].message.content.strip()
+            
+            # Try to extract JSON from the response
+            # Sometimes models add extra text despite instructions
+            try:
+                # First try direct parsing
+                decision = json.loads(content)
+            except json.JSONDecodeError:
+                # Try to find JSON object in the response
+                import re
+                json_match = re.search(r'\{[^{}]*"action_index"[^{}]*\}', content)
+                if json_match:
+                    try:
+                        decision = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse JSON from {self.model}, using fallback")
+                        decision = {"action_index": 0, "reasoning": "JSON parsing failed"}
+                else:
+                    # Last resort - try to find a number
+                    number_match = re.search(r'\b(\d+)\b', content)
+                    if number_match:
+                        action_index = int(number_match.group(1))
+                        decision = {"action_index": action_index, "reasoning": "Extracted number from response"}
+                    else:
+                        decision = {"action_index": 0, "reasoning": "Could not parse response"}
             
             # Validate action index
             action_index = decision.get("action_index", 0)
-            if not 0 <= action_index < len(legal_actions):
+            if not isinstance(action_index, int) or not 0 <= action_index < len(legal_actions):
                 logger.warning(f"Invalid action index {action_index}, defaulting to 0")
                 action_index = 0
             
@@ -71,7 +101,8 @@ Respond with ONLY a JSON object containing the chosen action index and brief rea
                 "action": legal_actions[action_index],
                 "action_index": action_index,
                 "reasoning": decision.get("reasoning", "No reasoning provided"),
-                "model": self.model
+                "model": self.model,
+                "raw_response": content  # Keep for debugging
             }
             
         except Exception as e:
