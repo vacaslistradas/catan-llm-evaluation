@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Union
 import aiohttp
 from openai import AsyncOpenAI
 from loguru import logger
+from catanatron.models.enums import SETTLEMENT, CITY
 from .config import Config
 
 class LLMClient:
@@ -199,33 +200,37 @@ Do not include any text before or after the JSON object. The response must be va
         action_type = action.get("type", "Unknown")
         
         # Handle Catanatron action types
-        if "BUILD_SETTLEMENT" in action_type:
+        if action_type == "BUILD_SETTLEMENT":
             return f"Build settlement at node {action.get('node', 'Unknown')}"
-        elif "BUILD_ROAD" in action_type:
+        elif action_type == "BUILD_ROAD":
             return f"Build road on edge {action.get('edge', 'Unknown')}"
-        elif "BUILD_CITY" in action_type:
+        elif action_type == "BUILD_CITY":
             return f"Upgrade settlement to city at node {action.get('node', 'Unknown')}"
-        elif "BUY_DEVELOPMENT_CARD" in action_type:
+        elif action_type == "BUY_DEVELOPMENT_CARD":
             return "Buy development card"
-        elif "PLAY_KNIGHT" in action_type or "PLAY_KNIGHT_CARD" in action_type:
+        elif action_type in ["PLAY_KNIGHT", "PLAY_KNIGHT_CARD"]:
             return "Play knight card"
-        elif "MOVE_ROBBER" in action_type:
-            hex_coord = action.get('hex_coordinate', 'Unknown')
-            steal_from = action.get('steal_from', '')
-            if steal_from:
-                return f"Move robber to hex {hex_coord} and steal from {steal_from}"
-            return f"Move robber to hex {hex_coord}"
-        elif "TRADE" in action_type or "MARITIME_TRADE" in action_type:
-            return f"Trade resources"
-        elif "END_TURN" in action_type:
+        elif action_type == "MOVE_ROBBER":
+            params = action.get('params', 'Unknown')
+            return f"Move robber {params}"
+        elif action_type in ["TRADE", "MARITIME_TRADE"]:
+            params = action.get('params', '')
+            return f"Trade resources {params}" if params else "Trade resources"
+        elif action_type == "END_TURN":
             return "End turn"
-        elif "ROLL" in action_type:
+        elif action_type == "ROLL":
             return "Roll dice"
-        elif "DISCARD" in action_type:
+        elif action_type == "DISCARD":
             return "Discard cards"
+        elif action_type == "PLAY_MONOPOLY":
+            return "Play monopoly card"
+        elif action_type == "PLAY_YEAR_OF_PLENTY":
+            return "Play year of plenty card"
+        elif action_type == "PLAY_ROAD_BUILDING":
+            return "Play road building card"
         else:
-            # Fallback for unknown action types
-            return f"{action_type}"
+            # Include raw action for unknown types
+            return f"{action_type} ({action.get('raw', '')})"
 
 class LLMPlayer:
     """Wrapper to make LLMClient compatible with Catanatron's player interface"""
@@ -267,7 +272,7 @@ class LLMPlayer:
         for i, color in enumerate(state.colors):
             player_state = {}
             
-            # Resources
+            # Resources - these keys always exist
             player_state["resources"] = {
                 "wood": state.player_state[f"P{i}_WOOD_IN_HAND"],
                 "brick": state.player_state[f"P{i}_BRICK_IN_HAND"],
@@ -276,19 +281,37 @@ class LLMPlayer:
                 "ore": state.player_state[f"P{i}_ORE_IN_HAND"]
             }
             
-            # Development cards
-            player_state["dev_cards_count"] = state.player_state[f"P{i}_DEVELOPMENT_CARDS_IN_HAND"]
-            player_state["knights_played"] = state.player_state[f"P{i}_KNIGHTS_PLAYED"]
+            # Development cards - full breakdown
+            player_state["dev_cards"] = {
+                "knight": state.player_state[f"P{i}_KNIGHT_IN_HAND"],
+                "victory_point": state.player_state[f"P{i}_VICTORY_POINT_IN_HAND"],
+                "road_building": state.player_state[f"P{i}_ROAD_BUILDING_IN_HAND"],
+                "year_of_plenty": state.player_state[f"P{i}_YEAR_OF_PLENTY_IN_HAND"],
+                "monopoly": state.player_state[f"P{i}_MONOPOLY_IN_HAND"]
+            }
+            player_state["dev_cards_count"] = sum(player_state["dev_cards"].values())
             
-            # Buildings
-            player_state["settlements"] = len(state.buildings_by_color[color]["SETTLEMENT"])
-            player_state["cities"] = len(state.buildings_by_color[color]["CITY"])
-            player_state["roads"] = len(state.roads_by_color[color])
+            # Played development cards
+            player_state["played_knight"] = state.player_state[f"P{i}_PLAYED_KNIGHT"]
+            player_state["played_road_building"] = state.player_state[f"P{i}_PLAYED_ROAD_BUILDING"]
+            player_state["played_year_of_plenty"] = state.player_state[f"P{i}_PLAYED_YEAR_OF_PLENTY"]
+            player_state["played_monopoly"] = state.player_state[f"P{i}_PLAYED_MONOPOLY"]
             
-            # Victory points and special cards
+            # Buildings - calculate from available pieces
+            player_state["settlements"] = 5 - state.player_state[f"P{i}_SETTLEMENTS_AVAILABLE"]
+            player_state["cities"] = 4 - state.player_state[f"P{i}_CITIES_AVAILABLE"]
+            player_state["roads"] = 15 - state.player_state[f"P{i}_ROADS_AVAILABLE"]
+            
+            # Victory points and special achievements
             player_state["victory_points"] = state.player_state[f"P{i}_VICTORY_POINTS"]
-            player_state["has_longest_road"] = state.player_state[f"P{i}_HAS_LONGEST_ROAD"]
-            player_state["has_largest_army"] = state.player_state[f"P{i}_HAS_LARGEST_ARMY"]
+            player_state["actual_victory_points"] = state.player_state[f"P{i}_ACTUAL_VICTORY_POINTS"]
+            player_state["has_longest_road"] = state.player_state[f"P{i}_HAS_ROAD"]
+            player_state["has_largest_army"] = state.player_state[f"P{i}_HAS_ARMY"]
+            player_state["longest_road_length"] = state.player_state[f"P{i}_LONGEST_ROAD_LENGTH"]
+            
+            # Turn state
+            player_state["has_rolled"] = state.player_state[f"P{i}_HAS_ROLLED"]
+            player_state["has_played_dev_card"] = state.player_state[f"P{i}_HAS_PLAYED_DEVELOPMENT_CARD_IN_TURN"]
             
             players[color.value] = player_state
         
@@ -304,68 +327,89 @@ class LLMPlayer:
         
         return {
             "turn": state.num_turns,
-            "current_player": self.color.value,
+            "current_player": state.colors[state.current_player_index].value,
+            "current_player_index": state.current_player_index,
             "players": players,
             "board": board_info,
-            "dice_rolled": getattr(state, "last_dice_roll", None)
+            "is_initial_build_phase": state.is_initial_build_phase,
+            "resource_bank": state.resource_freqdeck if hasattr(state, 'resource_freqdeck') else None
         }
     
     def _get_hex_info(self, state):
         """Get information about hex tiles"""
         hex_info = []
         # Catanatron uses a coordinate system for hexes
-        # This is a simplified representation - you might need to adjust based on actual API
-        for coord, tile in state.board.map.land_tiles.items():
-            hex_data = {
-                "coordinate": str(coord),
-                "resource": tile.resource.value if tile.resource else "desert",
-                "number": tile.number if hasattr(tile, 'number') else None
-            }
-            hex_info.append(hex_data)
+        if hasattr(state.board, 'map') and hasattr(state.board.map, 'land_tiles'):
+            for coord, tile in state.board.map.land_tiles.items():
+                resource = tile.resource
+                # Handle resource - it might be a string or enum
+                if hasattr(resource, 'value'):
+                    resource_str = resource.value
+                elif resource:
+                    resource_str = str(resource)
+                else:
+                    resource_str = "desert"
+                
+                hex_data = {
+                    "coordinate": str(coord),
+                    "resource": resource_str,
+                    "number": tile.number if hasattr(tile, 'number') else None
+                }
+                hex_info.append(hex_data)
         return hex_info
     
     def _get_robber_location(self, state):
         """Get current robber location"""
         # Return the coordinate of the hex with the robber
-        return str(state.board.robber_coordinate)
+        if hasattr(state.board, 'robber_coordinate'):
+            return str(state.board.robber_coordinate)
+        return "Unknown"
     
     def _get_port_info(self, state):
         """Get information about ports"""
         ports = []
-        for edge, port_type in state.board.map.port_edges.items():
-            ports.append({
-                "edge": str(edge),
-                "type": port_type.value if hasattr(port_type, 'value') else str(port_type)
-            })
+        if hasattr(state.board, 'map') and hasattr(state.board.map, 'port_edges'):
+            for edge, port_type in state.board.map.port_edges.items():
+                ports.append({
+                    "edge": str(edge),
+                    "type": port_type.value if hasattr(port_type, 'value') else str(port_type)
+                })
         return ports
     
     def _get_settlement_info(self, state):
         """Get all settlements on the board"""
         settlements = []
-        for color, buildings in state.buildings_by_color.items():
-            for node_id in buildings.get("SETTLEMENT", []):
-                settlements.append({
-                    "node": node_id,
-                    "owner": color.value
-                })
+        if hasattr(state, 'buildings_by_color'):
+            for color, buildings in state.buildings_by_color.items():
+                # buildings is a defaultdict(list)
+                settlement_nodes = buildings.get(SETTLEMENT, []) if hasattr(buildings, 'get') else []
+                for node_id in settlement_nodes:
+                    settlements.append({
+                        "node": node_id,
+                        "owner": color.value
+                    })
         return settlements
     
     def _get_city_info(self, state):
         """Get all cities on the board"""
         cities = []
-        for color, buildings in state.buildings_by_color.items():
-            for node_id in buildings.get("CITY", []):
-                cities.append({
-                    "node": node_id,
-                    "owner": color.value
-                })
+        if hasattr(state, 'buildings_by_color'):
+            for color, buildings in state.buildings_by_color.items():
+                # buildings is a defaultdict(list)
+                city_nodes = buildings.get(CITY, []) if hasattr(buildings, 'get') else []
+                for node_id in city_nodes:
+                    cities.append({
+                        "node": node_id,
+                        "owner": color.value
+                    })
         return cities
     
     def _get_road_info(self, state):
         """Get all roads on the board"""
         roads = []
-        for color, road_edges in state.roads_by_color.items():
-            for edge in road_edges:
+        if hasattr(state, 'board') and hasattr(state.board, 'roads'):
+            # Roads are stored in board.roads as {edge: color}
+            for edge, color in state.board.roads.items():
                 roads.append({
                     "edge": str(edge),
                     "owner": color.value
@@ -376,29 +420,45 @@ class LLMPlayer:
         """Convert Catanatron actions to our format"""
         converted = []
         for action in playable_actions:
-            # Catanatron actions are typically tuples (ActionType, *args)
-            if isinstance(action, tuple) and len(action) > 0:
-                action_type = action[0]
-                action_data = {
-                    "type": action_type.value if hasattr(action_type, 'value') else str(action_type),
-                    "raw": str(action)
-                }
+            # Actions come as Action objects with string representation
+            action_str = str(action)
+            action_data = {"raw": action_str}
+            
+            # Parse the action string format: "Action(COLOR ACTION_TYPE params)"
+            # Example: "Action(RED BUILD_SETTLEMENT 0)"
+            if action_str.startswith("Action(") and action_str.endswith(")"):
+                content = action_str[7:-1]  # Remove "Action(" and ")"
+                parts = content.split(" ", 2)  # Split into at most 3 parts
                 
-                # Add specific parameters based on action type
-                if len(action) > 1:
-                    if "BUILD_SETTLEMENT" in str(action_type):
-                        action_data["node"] = action[1]
-                    elif "BUILD_ROAD" in str(action_type):
-                        action_data["edge"] = str(action[1])
-                    elif "BUILD_CITY" in str(action_type):
-                        action_data["node"] = action[1]
-                    elif "MOVE_ROBBER" in str(action_type):
-                        action_data["hex_coordinate"] = str(action[1])
-                        if len(action) > 2:
-                            action_data["steal_from"] = action[2].value if hasattr(action[2], 'value') else str(action[2])
-                
-                converted.append(action_data)
+                if len(parts) >= 2:
+                    color = parts[0]
+                    action_type = parts[1]
+                    action_data["color"] = color
+                    action_data["type"] = action_type
+                    
+                    # Parse parameters based on action type
+                    if len(parts) > 2:
+                        params = parts[2]
+                        
+                        if action_type == "BUILD_SETTLEMENT":
+                            action_data["node"] = int(params) if params.isdigit() else params
+                        elif action_type == "BUILD_ROAD":
+                            # Road format: "(node1, node2)"
+                            if params.startswith("(") and params.endswith(")"):
+                                action_data["edge"] = params
+                        elif action_type == "BUILD_CITY":
+                            action_data["node"] = int(params) if params.isdigit() else params
+                        elif action_type == "MOVE_ROBBER":
+                            # Parse robber move parameters
+                            action_data["params"] = params
+                        elif action_type in ["MARITIME_TRADE", "TRADE"]:
+                            action_data["params"] = params
+                else:
+                    action_data["type"] = content
             else:
-                converted.append({"type": str(action), "raw": str(action)})
+                # Fallback for other action formats
+                action_data["type"] = action_str
+            
+            converted.append(action_data)
         
         return converted

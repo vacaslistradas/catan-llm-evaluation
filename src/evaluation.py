@@ -125,14 +125,16 @@ class CatanLLMEvaluator:
     
     async def _play_game_async(self, game: Game, game_log: Dict) -> Optional[Color]:
         """Play a game asynchronously to support LLM calls"""
-        while not game.state.is_game_over():
+        # Check if game has a winner
+        while game.winning_color() is None:
             if game.state.num_turns > Config.MAX_TURNS_PER_GAME:
                 logger.warning("Game exceeded maximum turns")
                 break
             
             # Get current player
-            current_player = game.state.current_player()
-            current_color = game.state.colors[current_player.value]
+            current_player_idx = game.state.current_player_index
+            current_player = game.state.players[current_player_idx]
+            current_color = game.state.colors[current_player_idx]
             
             # Get playable actions
             playable_actions = game.state.playable_actions
@@ -159,7 +161,7 @@ class CatanLLMEvaluator:
             game.execute(action)
         
         # Return winner
-        return game.state.winning_color()
+        return game.winning_color()
     
     def _save_game_log(self, game_log: Dict):
         """Save game log to file"""
