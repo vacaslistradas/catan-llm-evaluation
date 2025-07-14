@@ -3,95 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Catan LLM Evaluation Dashboard</title>
+    <title>Catan LLM Battle</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🎲 Catan LLM Evaluation Dashboard</h1>
-            <p class="subtitle">Evaluating Language Models through Strategic Gameplay</p>
-        </header>
-
-        <div class="dashboard-grid">
-            <!-- Leaderboard Section -->
-            <section class="leaderboard-section card">
-                <h2>🏆 Model Leaderboard</h2>
-                <div id="leaderboard-container">
-                    <table id="leaderboard-table">
-                        <thead>
-                            <tr>
-                                <th>Rank</th>
-                                <th>Model</th>
-                                <th>Elo Rating</th>
-                                <th>Games</th>
-                                <th>Win Rate</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leaderboard-body">
-                            <!-- Populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-                <div class="last-updated">Last updated: <span id="last-updated">Never</span></div>
-            </section>
-
-            <!-- Active Games Section -->
-            <section class="active-games-section card">
-                <h2>🎮 Active Games</h2>
-                <div id="active-games-container">
-                    <div id="active-games-list">
-                        <!-- Populated by JavaScript -->
+    <div class="game-container">
+        <!-- Top Bar with Player Info -->
+        <div class="top-bar">
+            <div class="player-info player-red">
+                <div class="player-avatar">🔴</div>
+                <div class="player-details">
+                    <div class="player-name" id="red-player-name">Waiting...</div>
+                    <div class="player-vp">
+                        <span id="red-score">0</span>
+                        <span class="vp-label">points</span>
+                    </div>
+                    <div class="player-buildings" id="red-buildings" style="font-size: 0.8em; opacity: 0.8;">
+                        <!-- Buildings will be shown here -->
                     </div>
                 </div>
-            </section>
-
-            <!-- Rating Chart Section -->
-            <section class="chart-section card">
-                <h2>📊 Rating Distribution</h2>
-                <canvas id="rating-chart"></canvas>
-            </section>
-
-            <!-- Recent Games Section -->
-            <section class="recent-games-section card">
-                <h2>📜 Recent Games</h2>
-                <div id="recent-games-container">
-                    <div id="recent-games-list">
-                        <!-- Populated by JavaScript -->
+            </div>
+            
+            <div class="game-status">
+                <div class="turn-indicator">To win the game, reach <span class="vp-target">10 points</span></div>
+                <div class="current-turn" id="current-turn-display">Turn 0</div>
+            </div>
+            
+            <div class="player-info player-blue">
+                <div class="player-details">
+                    <div class="player-name" id="blue-player-name">Waiting...</div>
+                    <div class="player-vp">
+                        <span id="blue-score">0</span>
+                        <span class="vp-label">points</span>
+                    </div>
+                    <div class="player-buildings" id="blue-buildings" style="font-size: 0.8em; opacity: 0.8;">
+                        <!-- Buildings will be shown here -->
                     </div>
                 </div>
-            </section>
+                <div class="player-avatar">🔵</div>
+            </div>
         </div>
 
-        <!-- Game Detail Modal -->
-        <div id="game-modal" class="modal">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Game Details</h2>
-                <div id="game-details">
-                    <!-- Populated by JavaScript -->
+        <!-- Main Game Area -->
+        <div class="main-content">
+            <!-- Waiting State -->
+            <div class="waiting-state" id="waiting-state">
+                <div class="board-placeholder">
+                    <h1>Catan LLM Battle</h1>
+                    <p>Waiting for game to start...</p>
+                    <div class="dice-animation">
+                        <span class="dice">🎲</span>
+                        <span class="dice">🎲</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Game State -->
+            <div class="game-state" id="game-state" style="display: none;">
+                <!-- Simplified Board Representation -->
+                <div class="board-container">
+                    <div class="board-hex-grid" id="board-display">
+                        <!-- Will be populated with hex tiles -->
+                    </div>
+                </div>
+
+                <!-- Side Panel -->
+                <div class="side-panel">
+                    <div class="chat-box">
+                        <h3>Game Log</h3>
+                        <div class="chat-messages" id="actions-list">
+                            <!-- Actions will appear here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Status Bar -->
-        <footer class="status-bar">
-            <div class="status-item">
-                <span class="status-indicator" id="connection-status"></span>
+        <!-- Bottom Bar with Resources -->
+        <div class="bottom-bar">
+            <div class="player-resources" id="red-resources-bar">
+                <span class="resource-label">🔴</span>
+                <div class="resource-cards" id="red-resources">
+                    <!-- Resources will be shown here -->
+                </div>
+            </div>
+            
+            <div class="connection-status">
+                <span id="connection-status" class="status-indicator"></span>
                 <span id="connection-text">Disconnected</span>
             </div>
-            <div class="status-item">
-                Total Games: <span id="total-games">0</span>
+            
+            <div class="player-resources" id="blue-resources-bar">
+                <span class="resource-label">🔵</span>
+                <div class="resource-cards" id="blue-resources">
+                    <!-- Resources will be shown here -->
+                </div>
             </div>
-            <div class="status-item">
-                Active Games: <span id="active-game-count">0</span>
-            </div>
-        </footer>
+        </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/catanatron-mapping.js') }}?v={{ range(1000, 9999) | random }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}?v={{ range(1000, 9999) | random }}"></script>
 </body>
 </html>
