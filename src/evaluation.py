@@ -194,19 +194,38 @@ class CatanLLMEvaluator:
                 break
             
             # If only one legal action, take it without calling the model
+            reasoning = None
             if len(playable_actions) == 1:
                 action = playable_actions[0]
+                reasoning = "AUTO MOVE"
                 color = "cyan" if current_color == Color.RED else "magenta"
                 console.print(f"[dim {color}]Auto-action for {current_color.value}: {action} (only option)[/dim {color}]")
             else:
                 # Get player's decision - all players use synchronous decide method
-                action = current_player.decide(game, playable_actions)
+                if hasattr(current_player, 'get_move'):
+                    # This is an LLM player - get full response with reasoning
+                    game_state = self._get_simplified_game_state(game)
+                    legal_actions = self._format_legal_actions(playable_actions)
+                    decision = current_player.get_move(game_state, legal_actions, [])
+                    action = decision.get('action', playable_actions[0])
+                    reasoning = decision.get('reasoning', 'No reasoning provided')
+                    
+                    # Convert back to Catanatron action
+                    for pa in playable_actions:
+                        if self._actions_match(pa, action):
+                            action = pa
+                            break
+                else:
+                    # Regular player (Random, etc)
+                    action = current_player.decide(game, playable_actions)
+                    reasoning = "Random player - no reasoning"
             
             # Log action
             action_data = {
                 "turn": game.state.num_turns,
                 "player": current_color.value,
                 "action": str(action),
+                "reasoning": reasoning,
                 "timestamp": datetime.now().isoformat()
             }
             
@@ -357,6 +376,48 @@ class CatanLLMEvaluator:
                 "roads": roads
             }
         }
+    
+    def _format_legal_actions(self, playable_actions):
+        """Format Catanatron actions into a format the LLM can understand"""
+        formatted = []
+        for action in playable_actions:
+            # Convert Catanatron action to dictionary format
+            action_dict = {
+                "type": action.action_type.name if hasattr(action, 'action_type') else str(action),
+                "params": str(action)
+            }
+            
+            # Add specific parameters based on action type
+            if hasattr(action, 'node_id'):
+                action_dict["node"] = action.node_id
+            if hasattr(action, 'edge'):
+                action_dict["edge"] = action.edge
+            if hasattr(action, 'coordinate'):
+                action_dict["coordinate"] = action.coordinate
+                
+            formatted.append(action_dict)
+        return formatted
+    
+    def _actions_match(self, catanatron_action, llm_action_dict):
+        """Check if a Catanatron action matches an LLM action dictionary"""
+        if not isinstance(llm_action_dict, dict):
+            return False
+            
+        # Compare action types
+        if hasattr(catanatron_action, 'action_type'):
+            if catanatron_action.action_type.name != llm_action_dict.get('type', ''):
+                return False
+                
+        # Compare specific parameters
+        if hasattr(catanatron_action, 'node_id') and 'node' in llm_action_dict:
+            if catanatron_action.node_id != llm_action_dict['node']:
+                return False
+                
+        if hasattr(catanatron_action, 'edge') and 'edge' in llm_action_dict:
+            if catanatron_action.edge != llm_action_dict['edge']:
+                return False
+                
+        return True
     
     def _notify_web_server(self, event_type: str, game_id: str, data: Dict):
         """Send notification to web server via HTTP"""

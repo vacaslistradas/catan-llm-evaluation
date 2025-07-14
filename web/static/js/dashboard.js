@@ -620,9 +620,26 @@ class CatanDashboard {
             .replace(/_/g, ' ')
             .toLowerCase();
         
+        // Format reasoning
+        let reasoningHtml = '';
+        if (actionData.reasoning) {
+            const isAutoMove = actionData.reasoning === 'AUTO MOVE';
+            const reasoningClass = isAutoMove ? 'auto-move' : 'llm-reasoning';
+            const reasoningIcon = isAutoMove ? '⚡' : '💭';
+            reasoningHtml = `
+                <div class="action-reasoning ${reasoningClass}">
+                    <span class="reasoning-icon">${reasoningIcon}</span>
+                    <span class="reasoning-text">${isAutoMove ? 'AUTO MOVE' : actionData.reasoning}</span>
+                </div>
+            `;
+        }
+        
         const actionHtml = `
             <div class="action-item ${actionClass}">
-                <strong>${actionData.player}</strong>: ${actionText}
+                <div class="action-header">
+                    <strong>${actionData.player}</strong>: ${actionText}
+                </div>
+                ${reasoningHtml}
             </div>
         `;
         

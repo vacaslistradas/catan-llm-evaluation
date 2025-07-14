@@ -1,12 +1,15 @@
-import asyncio
 import json
 import re
 from typing import List, Dict, Optional, Union
-import aiohttp
-from openai import AsyncOpenAI
+from openai import OpenAI
 from loguru import logger
 from catanatron.models.enums import SETTLEMENT, CITY
 from .config import Config
+from rich.console import Console
+from rich.panel import Panel
+from rich.syntax import Syntax
+
+console = Console()
 
 class LLMClient:
     """Unified client for interacting with LLMs through OpenRouter"""
@@ -15,15 +18,15 @@ class LLMClient:
         self.model = model
         self.api_key = api_key or Config.OPENROUTER_API_KEY
         
-        # Initialize async OpenAI client
-        self.client = AsyncOpenAI(
+        # Initialize synchronous OpenAI client
+        self.client = OpenAI(
             base_url=Config.OPENROUTER_BASE_URL,
             api_key=self.api_key
         )
         
         logger.info(f"Initialized LLM client for model: {model}")
     
-    async def get_move(
+    def get_move(
         self,
         game_state: Dict,
         legal_actions: List[Dict],
@@ -53,8 +56,18 @@ Do not include any text before or after the JSON object. The response must be va
         # Format game state for LLM
         user_prompt = self._format_game_state(game_state, legal_actions, game_history)
         
+        # Color based on model name
+        color = "cyan" if "o4-mini" in self.model else "magenta"
+        
+        # Log the input
+        console.print(Panel(
+            f"[bold {color}]🤖 {self.model} - INPUT[/bold {color}]\n\n" + 
+            user_prompt[:500] + ("..." if len(user_prompt) > 500 else ""),
+            border_style=color
+        ))
+        
         try:
-            response = await self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -67,6 +80,12 @@ Do not include any text before or after the JSON object. The response must be va
             
             # Parse response
             content = response.choices[0].message.content.strip()
+            
+            # Log the output
+            console.print(Panel(
+                f"[bold {color}]🤖 {self.model} - OUTPUT[/bold {color}]\n\n{content}",
+                border_style=color
+            ))
             
             # Try to extract JSON from the response
             # Sometimes models add extra text despite instructions
@@ -98,8 +117,12 @@ Do not include any text before or after the JSON object. The response must be va
                 logger.warning(f"Invalid action index {action_index}, defaulting to 0")
                 action_index = 0
             
+            # Log the chosen action
+            chosen_action = legal_actions[action_index]
+            console.print(f"[bold {color}]➡️  {self.model} chose: {self._format_action(chosen_action)}[/bold {color}]\n")
+            
             return {
-                "action": legal_actions[action_index],
+                "action": chosen_action,
                 "action_index": action_index,
                 "reasoning": decision.get("reasoning", "No reasoning provided"),
                 "model": self.model,
@@ -139,9 +162,10 @@ Do not include any text before or after the JSON object. The response must be va
                 prompt_parts.append(f"  Victory Points: {player_data.get('victory_points', 0)}")
                 prompt_parts.append(f"  Resources: {player_data.get('resources', {})}")
                 prompt_parts.append(f"  Development Cards: {player_data.get('dev_cards_count', 0)}")
-                prompt_parts.append(f"  Settlements: {player_data.get('settlement_count', 0)}")
-                prompt_parts.append(f"  Cities: {player_data.get('city_count', 0)}")
-                prompt_parts.append(f"  Road Length: {player_data.get('road_length', 0)}")
+                prompt_parts.append(f"  Settlements: {player_data.get('settlements', 0)}")
+                prompt_parts.append(f"  Cities: {player_data.get('cities', 0)}")
+                prompt_parts.append(f"  Roads Built: {player_data.get('roads', 0)}")
+                prompt_parts.append(f"  Longest Road: {player_data.get('longest_road_length', 0)}")
         
         # Board state summary
         if "board" in game_state:
@@ -241,31 +265,28 @@ class LLMPlayer:
         self.llm_client = LLMClient(model)
         self.name = f"LLM-{model.split('/')[-1]}"
     
-    async def decide_async(self, game, playable_actions):
-        """Async version of decide method for LLM calls"""
+    def decide(self, game, playable_actions):
+        """Synchronous decide method for Catanatron compatibility"""
         # Convert Catanatron game state to our format
         game_state = self._convert_game_state(game)
         legal_actions = self._convert_actions(playable_actions)
         
         # Get move from LLM
-        decision = await self.llm_client.get_move(game_state, legal_actions)
+        decision = self.llm_client.get_move(game_state, legal_actions)
         
         # Return the original Catanatron action
         return playable_actions[decision["action_index"]]
     
-    def decide(self, game, playable_actions):
-        """Synchronous wrapper for Catanatron compatibility"""
-        # Run async method in sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.decide_async(game, playable_actions))
-        finally:
-            loop.close()
-    
     def _convert_game_state(self, game):
         """Convert Catanatron game state to our format"""
         state = game.state
+        
+        # Debug logging to check road values
+        if state.num_turns <= 5:  # Only log early game
+            for i, color in enumerate(state.colors):
+                roads_built = 15 - state.player_state[f"P{i}_ROADS_AVAILABLE"]
+                longest_road = state.player_state[f"P{i}_LONGEST_ROAD_LENGTH"]
+                logger.debug(f"Turn {state.num_turns} - {color.value}: Roads built={roads_built}, Longest road={longest_road}")
         
         # Extract player information
         players = {}
@@ -297,10 +318,30 @@ class LLMPlayer:
             player_state["played_year_of_plenty"] = state.player_state[f"P{i}_PLAYED_YEAR_OF_PLENTY"]
             player_state["played_monopoly"] = state.player_state[f"P{i}_PLAYED_MONOPOLY"]
             
-            # Buildings - calculate from available pieces
-            player_state["settlements"] = 5 - state.player_state[f"P{i}_SETTLEMENTS_AVAILABLE"]
-            player_state["cities"] = 4 - state.player_state[f"P{i}_CITIES_AVAILABLE"]
-            player_state["roads"] = 15 - state.player_state[f"P{i}_ROADS_AVAILABLE"]
+            # Buildings - count actual buildings on the board for this player
+            player_state["settlements"] = 0
+            player_state["cities"] = 0
+            player_state["roads"] = 0
+            
+            # Count settlements and cities from buildings_by_color
+            if hasattr(state, 'buildings_by_color') and color in state.buildings_by_color:
+                buildings = state.buildings_by_color[color]
+                player_state["settlements"] = len(buildings.get(SETTLEMENT, []))
+                player_state["cities"] = len(buildings.get(CITY, []))
+            
+            # Count roads from board.roads
+            # Note: Catanatron might store roads as both (A,B) and (B,A), so we need to deduplicate
+            if hasattr(state, 'board') and hasattr(state.board, 'roads'):
+                player_roads = set()
+                for edge, road_color in state.board.roads.items():
+                    if road_color == color:
+                        # Normalize edge to avoid double counting (always use smaller node first)
+                        if isinstance(edge, tuple) and len(edge) == 2:
+                            normalized_edge = tuple(sorted(edge))
+                            player_roads.add(normalized_edge)
+                        else:
+                            player_roads.add(edge)
+                player_state["roads"] = len(player_roads)
             
             # Victory points and special achievements
             player_state["victory_points"] = state.player_state[f"P{i}_VICTORY_POINTS"]
