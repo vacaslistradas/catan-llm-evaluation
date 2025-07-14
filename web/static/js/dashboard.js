@@ -5,6 +5,7 @@ class CatanDashboard {
         this.socket = null;
         this.currentGameId = null;
         this.boardState = null;
+        this.showDebugNodes = false;  // Start with node numbers hidden
         this.init();
     }
 
@@ -363,7 +364,7 @@ class CatanDashboard {
         
         console.log('Node positions calculated:', Object.keys(this.nodePositions).length);
         
-        // Always show node numbers for debugging
+        // Show node numbers based on debug mode
         this.showNodeNumbers();
     }
     
@@ -373,6 +374,9 @@ class CatanDashboard {
         // Remove any existing node markers
         const existingMarkers = boardDisplay.querySelectorAll('.node-marker');
         existingMarkers.forEach(marker => marker.remove());
+        
+        // Only show if debug mode is enabled
+        if (!this.showDebugNodes) return;
         
         // Add node number markers
         Object.entries(this.nodePositions).forEach(([nodeId, pos]) => {
@@ -527,6 +531,22 @@ class CatanDashboard {
         if (resourcesElem && playerData.resources) {
             resourcesElem.innerHTML = this.formatResources(playerData.resources);
         }
+        
+        // Update buildings info
+        const buildingsElem = document.getElementById(`${color}-buildings`);
+        if (buildingsElem) {
+            const settlements = playerData.settlements || 0;
+            const cities = playerData.cities || 0;
+            const roads = playerData.roads || 0;
+            let buildingText = `🏠 ${settlements} 🏛️ ${cities} 🛤️ ${roads}`;
+            
+            // Add longest road indicator if player has it (5+ roads)
+            if (roads >= 5) {
+                buildingText += ` (Longest: ${roads})`;
+            }
+            
+            buildingsElem.textContent = buildingText;
+        }
     }
 
     formatResources(resources) {
@@ -672,7 +692,7 @@ class CatanDashboard {
             const buildingEl = document.createElement('div');
             buildingEl.className = `building ${building.type} ${building.color.toLowerCase()}`;
             buildingEl.style.position = 'absolute';
-            buildingEl.style.zIndex = '20';  // Ensure buildings are on top
+            buildingEl.style.zIndex = '50';  // Higher z-index to ensure buildings are on top of roads
             
             // Create colored shapes instead of emojis
             if (building.type === 'settlement') {
@@ -793,7 +813,50 @@ class CatanDashboard {
     }
 
     setupEventListeners() {
-        // Any additional event listeners can go here
+        // Keyboard shortcut for debug mode (press 'D')
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'd' || e.key === 'D') {
+                this.toggleDebugMode();
+            }
+        });
+        
+        // Add debug toggle button
+        this.addDebugToggle();
+    }
+    
+    addDebugToggle() {
+        const debugButton = document.createElement('button');
+        debugButton.id = 'debug-toggle';
+        debugButton.innerHTML = '🔧 Debug: OFF';
+        debugButton.style.position = 'fixed';
+        debugButton.style.bottom = '20px';
+        debugButton.style.right = '20px';
+        debugButton.style.padding = '10px 20px';
+        debugButton.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        debugButton.style.color = 'white';
+        debugButton.style.border = 'none';
+        debugButton.style.borderRadius = '5px';
+        debugButton.style.cursor = 'pointer';
+        debugButton.style.zIndex = '2000';
+        debugButton.style.fontSize = '14px';
+        
+        debugButton.onclick = () => this.toggleDebugMode();
+        document.body.appendChild(debugButton);
+    }
+    
+    toggleDebugMode() {
+        this.showDebugNodes = !this.showDebugNodes;
+        const button = document.getElementById('debug-toggle');
+        button.innerHTML = this.showDebugNodes ? '🔧 Debug: ON' : '🔧 Debug: OFF';
+        
+        // Re-render node numbers
+        this.showNodeNumbers();
+        
+        // Toggle edge display if they exist
+        const edgeDebugElements = document.querySelectorAll('.edge-debug');
+        edgeDebugElements.forEach(edge => {
+            edge.style.display = this.showDebugNodes ? 'block' : 'none';
+        });
     }
 }
 
