@@ -38,3 +38,48 @@ Thumbs.db
 game_states/
 elo_rankings.json
 *.db
+tournament_progress.json
+
+# Test and debug files
+test_*.py
+debug_*.py
+analyze_*.py
+check_*.py
+create_*.py
+extract_*.py
+find_*.py
+trace_*.py
+verify_*.py
+visualize_*.py
+run_test*.py
+run_simple_test.py
+simple_test.py
+demo_game.py
+
+# Test HTML files
+*.html
+!web/templates/*.html
+
+# Test data and generated files
+catanatron_*.json
+node_*.json
+*_mapping.py
+generated_*.py
+corrected_*.py
+final_*.py
+complete_*.py
+*.png
+
+# Documentation generated during debugging
+CATANATRON_*.md
+NODE_MAPPING_*.md
+
+# Temporary scripts
+start_game.py
+run_web_server.py
+map_*.py
+transform_*.py
+view_*.py
+
+# Other
+.Rhistory
