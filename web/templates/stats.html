@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catan LLM Tournament Stats</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -44,6 +45,19 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
+        }
+        
+        .rank-1 {
+            font-size: 1.2em;
+            background: rgba(255, 215, 0, 0.2);
+        }
+        
+        .rank-2 {
+            background: rgba(192, 192, 192, 0.2);
+        }
+        
+        .rank-3 {
+            background: rgba(205, 127, 50, 0.2);
         }
         
         .stat-card {
@@ -191,15 +205,30 @@
                 .sort(([,a], [,b]) => b - a);
             
             let html = '<table class="elo-table">';
-            html += '<thead><tr><th>Rank</th><th>Model</th><th>ELO Rating</th></tr></thead>';
+            html += '<thead><tr><th>Rank</th><th>Model</th><th>ELO Rating</th><th>Games (Win%)</th></tr></thead>';
             html += '<tbody>';
             
             sorted.forEach(([model, rating], index) => {
                 const modelShort = model.split('/').pop();
-                html += `<tr>
-                    <td>${index + 1}</td>
+                const rankClass = index < 3 ? `rank-${index + 1}` : '';
+                const medal = index === 0 ? '🥇 ' : index === 1 ? '🥈 ' : index === 2 ? '🥉 ' : '';
+                
+                // Count games from history
+                let wins = 0, losses = 0;
+                if (data.history) {
+                    data.history.forEach(game => {
+                        if (game.winner === model) wins++;
+                        if (game.loser === model) losses++;
+                    });
+                }
+                const totalGames = wins + losses;
+                const winRate = totalGames > 0 ? (wins / totalGames * 100).toFixed(1) : '-';
+                
+                html += `<tr class="${rankClass}">
+                    <td>${medal}${index + 1}</td>
                     <td>${modelShort}</td>
                     <td>${Math.round(rating)}</td>
+                    <td>${totalGames} (${winRate}%)</td>
                 </tr>`;
             });
             
@@ -210,11 +239,41 @@
         function displayTournamentProgress(data) {
             const container = document.getElementById('tournament-progress');
             
-            if (!data.progress) {
+            if (!data || (!data.progress && !data.models)) {
                 container.innerHTML = '<div class="no-data">No tournament in progress</div>';
                 return;
             }
             
+            // Handle new format from tournament_progress.json
+            if (data.models && Array.isArray(data.models)) {
+                const totalModels = data.models.length;
+                const totalMatchups = (totalModels * (totalModels - 1)) / 2;
+                const totalGames = totalMatchups * (data.games_per_matchup || 1);
+                const completed = data.total_games_completed || 0;
+                const percentage = totalGames > 0 ? (completed / totalGames * 100).toFixed(1) : 0;
+                
+                let html = `
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                            <span>Progress</span>
+                            <span>${completed} / ${totalGames} games</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.2); border-radius: 10px; overflow: hidden;">
+                            <div style="background: #4ade80; height: 20px; width: ${percentage}%; transition: width 0.3s;"></div>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.9em; opacity: 0.8;">
+                        <p>Models in tournament: ${totalModels}</p>
+                        <p>Games per matchup: ${data.games_per_matchup || 1}</p>
+                        <p>Total matchups: ${totalMatchups}</p>
+                    </div>
+                `;
+                
+                container.innerHTML = html;
+                return;
+            }
+            
+            // Handle old format
             const progress = data.progress;
             const percentage = (progress.completed / progress.total * 100).toFixed(1);
             
@@ -272,6 +331,27 @@
         
         // Refresh every 30 seconds
         setInterval(loadStats, 30000);
+        
+        // Connect to WebSocket for real-time updates
+        const socket = io();
+        
+        socket.on('connect', () => {
+            console.log('Connected to server for real-time updates');
+        });
+        
+        socket.on('leaderboard_update', (data) => {
+            console.log('Received leaderboard update');
+            // Reload all stats when leaderboard updates
+            loadStats();
+        });
+        
+        socket.on('game_update', (data) => {
+            if (data.type === 'game_end') {
+                console.log('Game ended, refreshing stats');
+                // Reload stats when a game ends
+                loadStats();
+            }
+        });
     </script>
 </body>
 </html>
