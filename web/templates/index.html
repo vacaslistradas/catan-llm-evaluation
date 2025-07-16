@@ -5,44 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catan LLM Battle</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_beautiful.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/board_fixes.css') }}">
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 </head>
 <body>
     <div class="game-container">
-        <!-- Top Bar with Player Info -->
+        <!-- Top Bar with Player Info and Title -->
         <div class="top-bar">
-            <a href="/stats" class="nav-link" style="position: absolute; left: 20px; top: 15px; background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; text-decoration: none; color: white; font-size: 14px; z-index: 100;">📊 Stats</a>
-            <div class="player-info player-red">
-                <div class="player-avatar">🔴</div>
-                <div class="player-details">
-                    <div class="player-name" id="red-player-name">Waiting...</div>
-                    <div class="player-vp">
-                        <span id="red-score">0</span>
-                        <span class="vp-label">points</span>
+            <div class="player-panel player-red">
+                <div class="player-header">
+                    <div class="player-name">
+                        <span id="red-player-name">Waiting...</span>
+                        <span class="badge">RED</span>
                     </div>
-                    <div class="player-buildings" id="red-buildings" style="font-size: 0.8em; opacity: 0.8;">
-                        <!-- Buildings will be shown here -->
+                </div>
+                <div class="player-content">
+                    <div class="score-display">
+                        <span class="score-value" id="red-score">0</span>
+                        <span class="score-label">points</span>
+                    </div>
+                    <div>
+                        <div class="resources-container" id="red-resources">
+                            <!-- Resources will be shown here -->
+                        </div>
+                        <div class="buildings-info" id="red-buildings">
+                            <!-- Buildings info -->
+                        </div>
                     </div>
                 </div>
             </div>
             
             <div class="game-status">
-                <div class="turn-indicator">To win the game, reach <span class="vp-target">10 points</span></div>
-                <div class="current-turn" id="current-turn-display">Turn 0</div>
+                <h1 class="game-title">Catan LLM Battle</h1>
+                <div id="current-turn-display">Turn 0</div>
+                <div class="turn-indicator">First to <span class="vp-target">10 points</span> wins!</div>
+                <a href="/stats" class="nav-link">📊 Tournament Stats</a>
             </div>
             
-            <div class="player-info player-blue">
-                <div class="player-details">
-                    <div class="player-name" id="blue-player-name">Waiting...</div>
-                    <div class="player-vp">
-                        <span id="blue-score">0</span>
-                        <span class="vp-label">points</span>
-                    </div>
-                    <div class="player-buildings" id="blue-buildings" style="font-size: 0.8em; opacity: 0.8;">
-                        <!-- Buildings will be shown here -->
+            <div class="player-panel player-blue">
+                <div class="player-header">
+                    <div class="player-name">
+                        <span id="blue-player-name">Waiting...</span>
+                        <span class="badge">BLUE</span>
                     </div>
                 </div>
-                <div class="player-avatar">🔵</div>
+                <div class="player-content">
+                    <div class="score-display">
+                        <span class="score-value" id="blue-score">0</span>
+                        <span class="score-label">points</span>
+                    </div>
+                    <div>
+                        <div class="resources-container" id="blue-resources">
+                            <!-- Resources will be shown here -->
+                        </div>
+                        <div class="buildings-info" id="blue-buildings">
+                            <!-- Buildings info -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -81,27 +102,6 @@
             </div>
         </div>
 
-        <!-- Bottom Bar with Resources -->
-        <div class="bottom-bar">
-            <div class="player-resources" id="red-resources-bar">
-                <span class="resource-label">🔴</span>
-                <div class="resource-cards" id="red-resources">
-                    <!-- Resources will be shown here -->
-                </div>
-            </div>
-            
-            <div class="connection-status">
-                <span id="connection-status" class="status-indicator"></span>
-                <span id="connection-text">Disconnected</span>
-            </div>
-            
-            <div class="player-resources" id="blue-resources-bar">
-                <span class="resource-label">🔵</span>
-                <div class="resource-cards" id="blue-resources">
-                    <!-- Resources will be shown here -->
-                </div>
-            </div>
-        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/catanatron-mapping.js') }}?v={{ range(1000, 9999) | random }}"></script>

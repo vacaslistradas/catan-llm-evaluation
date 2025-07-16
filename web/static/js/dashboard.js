@@ -5,13 +5,13 @@ class CatanDashboard {
         this.socket = null;
         this.currentGameId = null;
         this.boardState = null;
-        this.showDebugNodes = false;  // Start with node numbers hidden
         this.init();
     }
 
     init() {
         this.connectSocket();
         this.setupEventListeners();
+        this.checkForActiveGame();
     }
 
     connectSocket() {
@@ -20,6 +20,8 @@ class CatanDashboard {
         this.socket.on('connect', () => {
             console.log('Connected to server');
             this.updateConnectionStatus(true);
+            // Request current game state on reconnection
+            this.checkForActiveGame();
         });
 
         this.socket.on('disconnect', () => {
@@ -48,10 +50,12 @@ class CatanDashboard {
 
     handleGameUpdate(update) {
         console.log('Update type:', update.type);
+        console.log('Update data:', update.data);
         
         switch (update.type) {
             case 'game_start':
                 console.log('Game start - showing game');
+                console.log('Players data:', update.data.players);
                 this.showGame(update.game_id, update.data);
                 // Update board if provided
                 if (update.data.board) {
@@ -63,13 +67,8 @@ class CatanDashboard {
                 // If this is the first update, show the game
                 if (!this.currentGameId) {
                     console.log('First action - showing game');
-                    const players = {};
-                    if (update.data.game_state && update.data.game_state.players) {
-                        // Try to extract player names from somewhere
-                        players.RED = 'Red Player';
-                        players.BLUE = 'Blue Player';
-                    }
-                    this.showGame(update.game_id, { players });
+                    // Don't set default names - wait for proper game_start event
+                    this.currentGameId = update.game_id;
                 }
                 this.updateGame(update.game_id, update.data);
                 
@@ -89,6 +88,26 @@ class CatanDashboard {
         }
     }
 
+    checkForActiveGame() {
+        // Check if there's an active game we should display
+        fetch('/api/active-games')
+            .then(response => response.json())
+            .then(games => {
+                if (games && games.length > 0) {
+                    console.log('Found active game:', games[0]);
+                    // There's an active game, request its current state
+                    const activeGame = games[0];
+                    if (activeGame.game_id && !this.currentGameId) {
+                        // Simulate a game_start event to restore the UI
+                        this.showGame(activeGame.game_id, {
+                            players: activeGame.players
+                        });
+                    }
+                }
+            })
+            .catch(err => console.error('Error checking for active games:', err));
+    }
+
     showGame(gameId, gameData) {
         this.currentGameId = gameId;
         
@@ -96,10 +115,17 @@ class CatanDashboard {
         document.getElementById('waiting-state').style.display = 'none';
         document.getElementById('game-state').style.display = 'flex';
         
-        // Set player names
+        // Set player names - show just the model name part
         if (gameData.players) {
-            document.getElementById('red-player-name').textContent = gameData.players.RED || 'Red Player';
-            document.getElementById('blue-player-name').textContent = gameData.players.BLUE || 'Blue Player';
+            const redModel = gameData.players.RED || 'Red Player';
+            const blueModel = gameData.players.BLUE || 'Blue Player';
+            
+            // Extract just the model name from provider/model format
+            const redName = redModel.includes('/') ? redModel.split('/').pop() : redModel;
+            const blueName = blueModel.includes('/') ? blueModel.split('/').pop() : blueModel;
+            
+            document.getElementById('red-player-name').textContent = redName;
+            document.getElementById('blue-player-name').textContent = blueName;
         }
         
         // Initialize board display with empty board
@@ -179,8 +205,11 @@ class CatanDashboard {
             const hexHeight = 100;
             // For flat-topped hexagons: horizontal spacing = width
             // Vertical spacing = height * 3/4 (they overlap vertically)
-            const x = pos.x * hexWidth;
-            const y = pos.y * hexHeight * 0.75;
+            // Add offset to center the board in the larger container
+            const boardOffsetX = 85;
+            const boardOffsetY = 85;
+            const x = boardOffsetX + pos.x * hexWidth;
+            const y = boardOffsetY + pos.y * hexHeight * 0.75;
             hex.style.left = `${x}px`;
             hex.style.top = `${y}px`;
             
@@ -198,6 +227,7 @@ class CatanDashboard {
         
         // Calculate node positions for buildings immediately
         this.calculateNodePositions();
+        console.log('Total node positions calculated:', Object.keys(this.nodePositions).length);
     }
     
     calculateNodePositions() {
@@ -206,9 +236,11 @@ class CatanDashboard {
         const vSpacing = hexHeight * 0.75;
         
         // Helper to get hex center using the EXACT same logic as initializeBoard
+        const boardOffsetX = 85;
+        const boardOffsetY = 85;
         const getHexCenter = (x, y) => {
-            const centerX = x * hexWidth;
-            const centerY = y * hexHeight * 0.75;
+            const centerX = boardOffsetX + x * hexWidth;
+            const centerY = boardOffsetY + y * hexHeight * 0.75;
             return {
                 x: centerX + hexWidth / 2,
                 y: centerY + hexHeight / 2
@@ -363,53 +395,19 @@ class CatanDashboard {
         }
         
         console.log('Node positions calculated:', Object.keys(this.nodePositions).length);
-        
-        // Show node numbers based on debug mode
-        this.showNodeNumbers();
     }
     
-    showNodeNumbers() {
-        const boardDisplay = document.getElementById('board-display');
-        
-        // Remove any existing node markers
-        const existingMarkers = boardDisplay.querySelectorAll('.node-marker');
-        existingMarkers.forEach(marker => marker.remove());
-        
-        // Only show if debug mode is enabled
-        if (!this.showDebugNodes) return;
-        
-        // Add node number markers
-        Object.entries(this.nodePositions).forEach(([nodeId, pos]) => {
-            const marker = document.createElement('div');
-            marker.className = 'node-marker';
-            marker.style.position = 'absolute';
-            marker.style.left = `${pos.x - 12}px`;
-            marker.style.top = `${pos.y - 12}px`;
-            marker.style.width = '24px';
-            marker.style.height = '24px';
-            marker.style.borderRadius = '50%';
-            marker.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-            marker.style.border = '2px solid rgba(0, 0, 0, 0.8)';
-            marker.style.fontSize = '11px';
-            marker.style.display = 'flex';
-            marker.style.alignItems = 'center';
-            marker.style.justifyContent = 'center';
-            marker.style.color = 'black';
-            marker.style.fontWeight = 'bold';
-            marker.style.zIndex = '1000';
-            marker.style.pointerEvents = 'none';
-            marker.textContent = nodeId;
-            boardDisplay.appendChild(marker);
-        });
-    }
     
-    showAllEdges() {
+    _removed_showAllEdges() {
         // Show all valid edges according to Catanatron
         const boardDisplay = document.getElementById('board-display');
         
         // Remove existing edge debug lines
         const existingEdges = boardDisplay.querySelectorAll('.edge-debug');
         existingEdges.forEach(edge => edge.remove());
+        
+        // Only show if debug mode is enabled
+        if (!this.showDebugNodes) return;
         
         // Catanatron's valid edges (from our analysis)
         const validEdges = [
@@ -501,6 +499,18 @@ class CatanDashboard {
                 turnDisplay.textContent = `Turn ${turn}`;
             }
             
+            // Highlight active player
+            const currentPlayer = state.current_player_color;
+            document.querySelectorAll('.player-panel').forEach(panel => {
+                panel.classList.remove('active');
+            });
+            if (currentPlayer) {
+                const activePanel = document.querySelector(`.player-${currentPlayer.toLowerCase()}`);
+                if (activePanel) {
+                    activePanel.classList.add('active');
+                }
+            }
+            
             // Update scores and resources
             if (state.players) {
                 this.updatePlayerState('red', state.players.RED);
@@ -526,7 +536,7 @@ class CatanDashboard {
             scoreElem.textContent = playerData.victory_points || 0;
         }
         
-        // Update resources
+        // Update resources in the new container
         const resourcesElem = document.getElementById(`${color}-resources`);
         if (resourcesElem && playerData.resources) {
             resourcesElem.innerHTML = this.formatResources(playerData.resources);
@@ -546,6 +556,33 @@ class CatanDashboard {
             }
             
             buildingsElem.textContent = buildingText;
+            
+            // Show port access if player has any
+            if (this.boardState && this.boardState.ports && this.boardState.buildings) {
+                const playerPorts = [];
+                this.boardState.buildings.forEach(building => {
+                    if (building.color.toLowerCase() === color && building.type === 'settlement') {
+                        // Check if this settlement is on a port
+                        const portAtNode = this.boardState.ports.find(p => p.node_id === building.node_id);
+                        if (portAtNode && !playerPorts.includes(portAtNode.type)) {
+                            playerPorts.push(portAtNode.type);
+                        }
+                    }
+                });
+                
+                if (playerPorts.length > 0) {
+                    buildingText += ' | Ports: ';
+                    playerPorts.forEach(portType => {
+                        if (portType.includes('WOOD')) buildingText += '🪵 ';
+                        else if (portType.includes('BRICK')) buildingText += '🧱 ';
+                        else if (portType.includes('SHEEP')) buildingText += '🐑 ';
+                        else if (portType.includes('WHEAT')) buildingText += '🌾 ';
+                        else if (portType.includes('ORE')) buildingText += '⛏️ ';
+                        else if (portType.includes('THREE_TO_ONE') || portType.includes('ANY')) buildingText += '3:1 ';
+                    });
+                    buildingsElem.textContent = buildingText.trim();
+                }
+            }
         }
     }
 
@@ -560,14 +597,12 @@ class CatanDashboard {
         
         let html = '';
         for (const [type, count] of Object.entries(resources)) {
-            if (count > 0) {
-                html += `
-                    <div class="resource-card ${type}">
-                        <div class="resource-icon">${resourceIcons[type]}</div>
-                        <div class="resource-count">${count}</div>
-                    </div>
-                `;
-            }
+            html += `
+                <div class="resource-card ${type}" style="${count === 0 ? 'opacity: 0.5;' : ''}">
+                    <div class="resource-icon">${resourceIcons[type]}</div>
+                    <div class="resource-count">${count}</div>
+                </div>
+            `;
         }
         
         return html || '<div style="opacity: 0.5;">No resources</div>';
@@ -605,28 +640,62 @@ class CatanDashboard {
                     // This hex has a number (desert tiles won't have numbers)
                     const numberDiv = document.createElement('div');
                     numberDiv.className = 'hex-number';
+                    
+                    // Add special styling for high probability numbers
                     if (hexData.number === 6 || hexData.number === 8) {
-                        numberDiv.classList.add('rare');
+                        numberDiv.classList.add('high-probability');
                     }
                     numberDiv.textContent = hexData.number;
                     centerDiv.appendChild(numberDiv);
+                    
+                    // Add probability dots
+                    const dotsContainer = document.createElement('div');
+                    dotsContainer.className = 'probability-dots';
+                    
+                    // Determine number of dots based on probability
+                    let dotCount = 0;
+                    switch(hexData.number) {
+                        case 2:
+                        case 12:
+                            dotCount = 1;
+                            break;
+                        case 3:
+                        case 11:
+                            dotCount = 2;
+                            break;
+                        case 4:
+                        case 10:
+                            dotCount = 3;
+                            break;
+                        case 5:
+                        case 9:
+                            dotCount = 4;
+                            break;
+                        case 6:
+                        case 8:
+                            dotCount = 5;
+                            break;
+                    }
+                    
+                    // Create dots
+                    for (let i = 0; i < dotCount; i++) {
+                        const dot = document.createElement('div');
+                        dot.className = 'probability-dot';
+                        dotsContainer.appendChild(dot);
+                    }
+                    
+                    centerDiv.appendChild(dotsContainer);
                 }
             }
         });
         
-        // Update buildings and roads
+        // Update buildings, roads, and ports
         console.log('Board data buildings:', boardData.buildings);
         console.log('Board data roads:', boardData.roads);
+        console.log('Board data ports:', boardData.ports);
         this.updateBuildings(boardData.buildings || []);
         this.updateRoads(boardData.roads || []);
-        
-        // Re-draw node numbers to keep them on top
-        this.showNodeNumbers();
-        
-        // Show all valid edges for debugging
-        if (window.location.search.includes('edges')) {
-            this.showAllEdges();
-        }
+        this.updatePorts(boardData.ports || []);
     }
 
     addAction(actionData) {
@@ -789,6 +858,199 @@ class CatanDashboard {
         });
     }
     
+    updatePorts(ports) {
+        // Remove existing ports and SVG elements
+        const existingPorts = document.querySelectorAll('.port-marker, .port-svg');
+        existingPorts.forEach(p => p.remove());
+        
+        if (!ports || ports.length === 0) return;
+        
+        const boardDisplay = document.getElementById('board-display');
+        const hexSideLength = 45; // Reduced to keep ports within canvas bounds
+        
+        // Hardcoded port pairs from Catanatron debug output
+        const PORT_PAIRS = [
+            {nodes: [25, 26], type: '3:1'},
+            {nodes: [28, 29], type: 'ORE'},
+            {nodes: [32, 33], type: 'WHEAT'},
+            {nodes: [35, 36], type: 'WOOD'},
+            {nodes: [38, 39], type: '3:1'},
+            {nodes: [40, 44], type: 'BRICK'},
+            {nodes: [45, 47], type: '3:1'},
+            {nodes: [48, 49], type: '3:1'},
+            {nodes: [52, 53], type: 'SHEEP'}
+        ];
+        
+        // Create a map from port nodes to their types
+        const nodeToType = {};
+        ports.forEach(port => {
+            nodeToType[port.node_id] = port.type || 'THREE_TO_ONE';
+        });
+        
+        // Debug: log what ports we have
+        console.log('Port nodes from server:', ports);
+        console.log('Port node IDs:', ports.map(p => p.node_id).sort((a,b) => a-b));
+        console.log('Node to type mapping:', nodeToType);
+        
+        // Check which port nodes have positions
+        const missingPositions = [];
+        ports.forEach(port => {
+            if (!this.nodePositions[port.node_id]) {
+                missingPositions.push(port.node_id);
+            }
+        });
+        if (missingPositions.length > 0) {
+            console.warn('Port nodes missing positions:', missingPositions);
+        }
+        
+        // Let's also check which of our hardcoded pairs actually have ports
+        const validPairs = [];
+        
+        // Track which ports we successfully draw
+        const drawnPorts = [];
+        const skippedPorts = [];
+        
+        // Process each hardcoded port pair
+        PORT_PAIRS.forEach(portPair => {
+            const [node1Id, node2Id] = portPair.nodes;
+            const portType = portPair.type;
+            
+            console.log(`Processing port pair [${node1Id}, ${node2Id}] of type ${portType}`);
+            
+            const node1 = this.nodePositions[node1Id];
+            const node2 = this.nodePositions[node2Id];
+            
+            if (!node1 || !node2) {
+                console.warn(`Missing position for port nodes ${node1Id} or ${node2Id}`);
+                skippedPorts.push([node1Id, node2Id]);
+                return;
+            }
+            
+            // Draw the port
+            this.drawPort(node1, node2, node1Id, node2Id, portType, hexSideLength, boardDisplay);
+            drawnPorts.push([node1Id, node2Id]);
+        });
+        
+        // Summary
+        console.log(`Successfully drew ${drawnPorts.length} ports:`, drawnPorts);
+        console.log(`Skipped ${skippedPorts.length} ports:`, skippedPorts);
+    }
+    
+    drawPort(node1, node2, node1Id, node2Id, type, hexSideLength, boardDisplay) {
+        // Calculate edge properties
+        const edgeDx = node2.x - node1.x;
+        const edgeDy = node2.y - node1.y;
+            const edgeLength = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+            
+            // Calculate midpoint of the edge
+            const midX = (node1.x + node2.x) / 2;
+            const midY = (node1.y + node2.y) / 2;
+            
+            // Calculate perpendicular direction (normalized)
+            const perpX = -edgeDy / edgeLength;
+            const perpY = edgeDx / edgeLength;
+            
+            // Determine which direction to go (outward from board center)
+            const boardCenterX = 300;
+            const boardCenterY = 285;
+            const toCenterX = boardCenterX - midX;
+            const toCenterY = boardCenterY - midY;
+            
+            // Check if perpendicular points away from center
+            const dotProduct = perpX * toCenterX + perpY * toCenterY;
+            const direction = dotProduct > 0 ? -1 : 1;
+            
+            // Place port at hex side length distance
+            const portX = midX + direction * perpX * hexSideLength;
+            const portY = midY + direction * perpY * hexSideLength;
+            
+            // Get or create the main SVG for port lines
+            let svg = boardDisplay.querySelector('#port-lines-svg');
+            if (!svg) {
+                svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.id = 'port-lines-svg';
+                svg.style.position = 'absolute';
+                svg.style.left = '-85px';
+                svg.style.top = '-85px';
+                svg.style.width = '700px';
+                svg.style.height = '700px';
+                svg.style.pointerEvents = 'none';
+                svg.style.zIndex = '14';
+                svg.style.overflow = 'visible';
+                svg.setAttribute('viewBox', '-85 -85 700 700');
+                boardDisplay.appendChild(svg);
+            }
+            
+            // Draw line from node1 to port
+            const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line1.setAttribute('x1', node1.x);
+            line1.setAttribute('y1', node1.y);
+            line1.setAttribute('x2', portX);
+            line1.setAttribute('y2', portY);
+            line1.setAttribute('stroke', 'white');
+            line1.setAttribute('stroke-width', '3');
+            line1.setAttribute('opacity', '0.9');
+            svg.appendChild(line1);
+            
+            // Draw line from node2 to port
+            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line2.setAttribute('x1', node2.x);
+            line2.setAttribute('y1', node2.y);
+            line2.setAttribute('x2', portX);
+            line2.setAttribute('y2', portY);
+            line2.setAttribute('stroke', 'white');
+            line2.setAttribute('stroke-width', '3');
+            line2.setAttribute('opacity', '0.9');
+            svg.appendChild(line2);
+            
+            // Create port indicator
+            const portEl = document.createElement('div');
+            portEl.className = 'port-marker';
+            portEl.style.position = 'absolute';
+            portEl.style.left = `${portX - 20}px`;
+            portEl.style.top = `${portY - 20}px`;
+            portEl.style.width = '40px';
+            portEl.style.height = '40px';
+            portEl.style.borderRadius = '50%';
+            portEl.style.backgroundColor = 'white';
+            portEl.style.border = '3px solid #333';
+            portEl.style.display = 'flex';
+            portEl.style.alignItems = 'center';
+            portEl.style.justifyContent = 'center';
+            portEl.style.fontSize = '18px';
+            portEl.style.fontWeight = 'bold';
+            portEl.style.color = '#333';
+            portEl.style.zIndex = '15';
+            portEl.style.cursor = 'help';
+            portEl.style.boxShadow = '0 3px 6px rgba(0, 0, 0, 0.3)';
+            
+            // Set port content based on type
+            if (type === 'WOOD') {
+                portEl.innerHTML = '🪵';
+                portEl.title = 'Wood Port (2:1)';
+            } else if (type === 'BRICK') {
+                portEl.innerHTML = '🧱';
+                portEl.title = 'Brick Port (2:1)';
+            } else if (type === 'SHEEP') {
+                portEl.innerHTML = '🐑';
+                portEl.title = 'Sheep Port (2:1)';
+            } else if (type === 'WHEAT') {
+                portEl.innerHTML = '🌾';
+                portEl.title = 'Wheat Port (2:1)';
+            } else if (type === 'ORE') {
+                portEl.innerHTML = '⛏️';
+                portEl.title = 'Ore Port (2:1)';
+            } else {
+                // 3:1 port
+                portEl.textContent = '3:1';
+                portEl.style.fontSize = '16px';
+                portEl.title = 'General Port (3:1)';
+            }
+            
+            boardDisplay.appendChild(portEl);
+    }
+    
+    
     extractNodeId(edgeStr) {
         // Try to extract node ID from various formats
         console.log('Extracting node from:', edgeStr);
@@ -813,18 +1075,17 @@ class CatanDashboard {
     }
 
     setupEventListeners() {
-        // Keyboard shortcut for debug mode (press 'D')
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'd' || e.key === 'D') {
-                this.toggleDebugMode();
+        
+        // Handle page visibility changes (when coming back from stats page)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !this.currentGameId) {
+                console.log('Page became visible, checking for active game...');
+                this.checkForActiveGame();
             }
         });
-        
-        // Add debug toggle button
-        this.addDebugToggle();
     }
     
-    addDebugToggle() {
+    _removed_addDebugToggle() {
         const debugButton = document.createElement('button');
         debugButton.id = 'debug-toggle';
         debugButton.innerHTML = '🔧 Debug: OFF';
@@ -840,17 +1101,14 @@ class CatanDashboard {
         debugButton.style.zIndex = '2000';
         debugButton.style.fontSize = '14px';
         
-        debugButton.onclick = () => this.toggleDebugMode();
+        debugButton.onclick = () => this._removed_toggleDebugMode();
         document.body.appendChild(debugButton);
     }
     
-    toggleDebugMode() {
+    _removed_toggleDebugMode() {
         this.showDebugNodes = !this.showDebugNodes;
         const button = document.getElementById('debug-toggle');
         button.innerHTML = this.showDebugNodes ? '🔧 Debug: ON' : '🔧 Debug: OFF';
-        
-        // Re-render node numbers
-        this.showNodeNumbers();
         
         // Toggle edge display if they exist
         const edgeDebugElements = document.querySelectorAll('.edge-debug');

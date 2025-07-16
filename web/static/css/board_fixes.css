@@ -1,0 +1,43 @@
+/* Board fixes to ensure proper hex layout */
+
+/* Ensure hex tiles maintain their absolute positioning and size */
+.hex-tile {
+    position: absolute !important;
+    width: 86px !important;
+    height: 100px !important;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%) !important;
+}
+
+/* Board display handled by dashboard_beautiful.css */
+
+/* Fix waiting and game state containers */
+#waiting-state, #game-state {
+    width: 100%;
+}
+
+/* Ensure main content doesn't overflow */
+.main-content {
+    overflow-x: auto;
+    padding: 0 1rem;
+}
+
+/* Fix resource container in player updates */
+#red-resources, #blue-resources {
+    min-height: 40px;
+}
+
+/* Ensure the game container fits on one screen */
+.game-container {
+    max-height: 100vh;
+    overflow-y: auto;
+}
+
+/* Make turn display more compact */
+.turn-indicator {
+    font-size: 0.9rem;
+}
+
+.vp-target {
+    color: #ffd700;
+    font-weight: bold;
+}

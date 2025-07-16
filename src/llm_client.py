@@ -95,21 +95,36 @@ Do not include any text before or after the JSON object. The response must be va
             except json.JSONDecodeError:
                 # Try to find JSON object in the response
                 import re
-                json_match = re.search(r'\{[^{}]*"action_index"[^{}]*\}', content)
-                if json_match:
-                    try:
-                        decision = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse JSON from {self.model}, using fallback")
-                        decision = {"action_index": 0, "reasoning": "JSON parsing failed"}
-                else:
-                    # Last resort - try to find a number
-                    number_match = re.search(r'\b(\d+)\b', content)
-                    if number_match:
-                        action_index = int(number_match.group(1))
-                        decision = {"action_index": action_index, "reasoning": "Extracted number from response"}
+                # Look for JSON that might be embedded in text, handle nested braces
+                json_candidates = re.findall(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content)
+                
+                decision = None
+                for candidate in json_candidates:
+                    if '"action_index"' in candidate:
+                        try:
+                            decision = json.loads(candidate)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                
+                if not decision:
+                    # Try to find action_index mentioned in text
+                    # Look for patterns like "action index 0", "choose action 0", "index: 0", etc.
+                    action_match = re.search(r'(?:action\s*(?:index)?|index|choose\s*action|choose)\s*[:=]?\s*(\d+)', content, re.IGNORECASE)
+                    if action_match:
+                        action_index = int(action_match.group(1))
+                        # Extract reasoning if possible
+                        reasoning_match = re.search(r'"reasoning"\s*:\s*"([^"]+)"', content)
+                        reasoning = reasoning_match.group(1) if reasoning_match else "Extracted from text response"
+                        decision = {"action_index": action_index, "reasoning": reasoning}
                     else:
-                        decision = {"action_index": 0, "reasoning": "Could not parse response"}
+                        # Last resort - find the first number
+                        number_match = re.search(r'\b(\d+)\b', content)
+                        if number_match:
+                            action_index = int(number_match.group(1))
+                            decision = {"action_index": action_index, "reasoning": "Extracted first number from response"}
+                        else:
+                            decision = {"action_index": 0, "reasoning": "Could not parse response - defaulting to first action"}
             
             # Validate action index
             action_index = decision.get("action_index", 0)
@@ -264,6 +279,11 @@ class LLMPlayer:
         self.model = model
         self.llm_client = LLMClient(model)
         self.name = f"LLM-{model.split('/')[-1]}"
+    
+    def get_move(self, game_state, legal_actions, game_history=None):
+        """Get move with reasoning for the evaluation system"""
+        # This is already in the correct format
+        return self.llm_client.get_move(game_state, legal_actions, game_history)
     
     def decide(self, game, playable_actions):
         """Synchronous decide method for Catanatron compatibility"""
@@ -485,8 +505,7 @@ class LLMPlayer:
                             action_data["node"] = int(params) if params.isdigit() else params
                         elif action_type == "BUILD_ROAD":
                             # Road format: "(node1, node2)"
-                            if params.startswith("(") and params.endswith(")"):
-                                action_data["edge"] = params
+                            action_data["edge"] = params
                         elif action_type == "BUILD_CITY":
                             action_data["node"] = int(params) if params.isdigit() else params
                         elif action_type == "MOVE_ROBBER":
