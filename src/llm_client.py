@@ -231,26 +231,73 @@ Do not include any text before or after the JSON object. The response must be va
             if game_state.get('turn', 0) <= 4 and hexes:
                 prompt_parts.append("\nKey Node-Hex Relationships:")
                 # Show some important nodes and what they touch
-                hex_by_coord = {h['coordinate']: h for h in hexes}
-                important_nodes = {
-                    0: ["(0, 0, 0)", "(0, 1, -1)", "(1, 0, -1)"],  # Center position
-                    1: ["(0, 0, 0)", "(1, -1, 0)", "(1, 0, -1)"],
-                    2: ["(0, 0, 0)", "(1, -1, 0)", "(0, -1, 1)"],
-                    3: ["(0, 0, 0)", "(0, -1, 1)", "(-1, 0, 1)"],
-                    4: ["(0, 0, 0)", "(-1, 0, 1)", "(-1, 1, 0)"],
-                    5: ["(0, 0, 0)", "(-1, 1, 0)", "(0, 1, -1)"]
-                }
-                for node, hex_coords in important_nodes.items():
+                hex_by_coord = {h['cube_coord']: h for h in hexes if 'cube_coord' in h}
+                # The hardcoded approach doesn't work because of board randomization
+                # Instead, provide information for all buildable nodes dynamically
+                # Nodes to show in initial placement (good starting positions)
+                nodes_to_show = [0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 
+                               16, 17, 18, 19, 20, 21, 22, 23, 30, 35, 37, 40, 45, 47, 50]
+                
+                # For each node, find what hexes it actually touches in THIS game
+                # by checking all hexes and seeing which ones are adjacent
+                node_hex_mapping = {}
+                for node_id in nodes_to_show:
+                    adjacent_hexes = []
+                    # Check each hex to see if this node is adjacent to it
+                    for hex_info in hexes:
+                        cube_coord = hex_info.get('cube_coord', '')
+                        # Use the hardcoded adjacency patterns from find_correct_node_hex_mapping.py
+                        # These define the fixed topology of the Catan board
+                        node_adjacencies = {
+                            0: ['(0, 0, 0)', '(0, 1, -1)', '(1, 0, -1)'],
+                            1: ['(0, 0, 0)', '(1, -1, 0)', '(1, 0, -1)'],
+                            2: ['(0, 0, 0)', '(1, -1, 0)', '(0, -1, 1)'],
+                            3: ['(0, 0, 0)', '(0, -1, 1)', '(-1, 0, 1)'],
+                            4: ['(0, 0, 0)', '(-1, 0, 1)', '(-1, 1, 0)'],
+                            5: ['(0, 0, 0)', '(-1, 1, 0)', '(0, 1, -1)'],
+                            6: ['(1, -1, 0)', '(1, 0, -1)', '(2, -1, -1)'],
+                            7: ['(1, -1, 0)', '(2, -2, 0)', '(2, -1, -1)'],
+                            8: ['(1, -1, 0)', '(2, -2, 0)', '(1, -2, 1)'],
+                            9: ['(1, -1, 0)', '(0, -1, 1)', '(1, -2, 1)'],
+                            10: ['(0, -1, 1)', '(1, -2, 1)', '(0, -2, 2)'],
+                            11: ['(0, -1, 1)', '(0, -2, 2)', '(-1, -1, 2)'],
+                            12: ['(0, -1, 1)', '(-1, 0, 1)', '(-1, -1, 2)'],
+                            13: ['(-1, 0, 1)', '(-1, -1, 2)', '(-2, 0, 2)'],
+                            14: ['(-1, 0, 1)', '(-2, 0, 2)', '(-2, 1, 1)'],
+                            15: ['(-1, 0, 1)', '(-1, 1, 0)', '(-2, 1, 1)'],
+                            16: ['(-1, 1, 0)', '(0, 1, -1)', '(-1, 2, -1)'],
+                            17: ['(-1, 1, 0)', '(-2, 1, 1)', '(-2, 2, 0)'],
+                            18: ['(-1, 1, 0)', '(-2, 2, 0)', '(-1, 2, -1)'],
+                            19: ['(0, 1, -1)', '(0, 2, -2)', '(1, 1, -2)'],
+                            20: ['(0, 1, -1)', '(1, 0, -1)', '(1, 1, -2)'],
+                            21: ['(0, 1, -1)', '(-1, 2, -1)', '(0, 2, -2)'],
+                            22: ['(1, 0, -1)', '(1, 1, -2)', '(2, 0, -2)'],
+                            23: ['(1, 0, -1)', '(2, 0, -2)', '(2, -1, -1)'],
+                            30: ['(1, -2, 1)', '(0, -2, 2)'],
+                            35: ['(-1, -1, 2)', '(-2, 0, 2)'],
+                            37: ['(-2, 0, 2)', '(-2, 1, 1)'],
+                            40: ['(-2, 2, 0)', '(-1, 2, -1)'],
+                            45: ['(0, 2, -2)', '(1, 1, -2)'],
+                            47: ['(1, 1, -2)', '(2, 0, -2)'],
+                            50: ['(2, 0, -2)', '(2, -1, -1)']
+                        }
+                        
+                        if node_id in node_adjacencies and cube_coord in node_adjacencies[node_id]:
+                            adjacent_hexes.append(hex_info)
+                    
+                    if adjacent_hexes:
+                        node_hex_mapping[node_id] = adjacent_hexes
+                
+                # Now format the node information with actual resources
+                for node_id, adjacent_hexes in sorted(node_hex_mapping.items()):
                     resources = []
-                    for coord in hex_coords:
-                        if coord in hex_by_coord:
-                            h = hex_by_coord[coord]
-                            if h['resource'] != 'desert':
-                                resources.append(f"{h['resource']}-{h['number']}")
-                            else:
-                                resources.append("desert")
+                    for hex_info in adjacent_hexes:
+                        if hex_info['resource'] != 'desert':
+                            resources.append(f"{hex_info['resource']}-{hex_info.get('number', '?')}")
+                        else:
+                            resources.append("desert")
                     if resources:
-                        prompt_parts.append(f"  Node {node}: adjacent to {', '.join(resources)}")
+                        prompt_parts.append(f"  Node {node_id}: adjacent to {', '.join(resources)}")
             
             # Current buildings
             settlements = game_state["board"].get("settlements", [])
@@ -336,8 +383,12 @@ Do not include any text before or after the JSON object. The response must be va
         elif action_type in ["PLAY_KNIGHT", "PLAY_KNIGHT_CARD"]:
             return "Play knight card"
         elif action_type == "MOVE_ROBBER":
-            params = action.get('params', 'Unknown')
-            return f"Move robber {params}"
+            coordinate = action.get('coordinate', action.get('params', 'Unknown'))
+            steal_from = action.get('steal_from', '')
+            if steal_from:
+                return f"Move robber to {coordinate} and steal from {steal_from}"
+            else:
+                return f"Move robber to {coordinate}"
         elif action_type in ["TRADE", "MARITIME_TRADE"]:
             params = action.get('params', '')
             return f"Trade resources {params}" if params else "Trade resources"

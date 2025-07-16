@@ -207,14 +207,15 @@ class CatanLLMEvaluator:
                     game_state = self._get_simplified_game_state(game)
                     legal_actions = self._format_legal_actions(playable_actions)
                     decision = current_player.get_move(game_state, legal_actions, [])
-                    action = decision.get('action', playable_actions[0])
+                    action_index = decision.get('action_index', 0)
                     reasoning = decision.get('reasoning', 'No reasoning provided')
                     
-                    # Convert back to Catanatron action
-                    for pa in playable_actions:
-                        if self._actions_match(pa, action):
-                            action = pa
-                            break
+                    # Use the action index directly to get the correct Catanatron action
+                    if 0 <= action_index < len(playable_actions):
+                        action = playable_actions[action_index]
+                    else:
+                        logger.warning(f"Invalid action index {action_index}, using first action")
+                        action = playable_actions[0]
                 else:
                     # Regular player (Random, etc)
                     action = current_player.decide(game, playable_actions)
@@ -409,7 +410,13 @@ class CatanLLMEvaluator:
                 elif action.action_type.name == "BUILD_CITY":
                     action_dict["node"] = action.value
                 elif action.action_type.name == "MOVE_ROBBER":
-                    action_dict["coordinate"] = action.value
+                    # MOVE_ROBBER value is a tuple: (coordinate, player_to_steal_from, card)
+                    if isinstance(action.value, tuple) and len(action.value) >= 1:
+                        action_dict["coordinate"] = action.value[0]  # Just the coordinate
+                        if len(action.value) >= 2 and action.value[1]:
+                            action_dict["steal_from"] = action.value[1].value if hasattr(action.value[1], 'value') else str(action.value[1])
+                    else:
+                        action_dict["coordinate"] = action.value
                 else:
                     # For other action types, store value as params
                     action_dict["params"] = action.value
