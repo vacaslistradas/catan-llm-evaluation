@@ -164,6 +164,35 @@ Do not include any text before or after the JSON object. The response must be va
         
         prompt_parts = []
         
+        # Add comprehensive board layout explanation
+        if game_state.get('turn', 0) <= 4:  # Initial placement phase
+            prompt_parts.append("=== CATAN BOARD SPATIAL GUIDE ===")
+            prompt_parts.append("\nThe board has 19 hexes arranged in a honeycomb pattern:")
+            prompt_parts.append("- Center hex (0) is surrounded by 6 hexes (1-6)")
+            prompt_parts.append("- Outer ring has 12 hexes (7-18)")
+            prompt_parts.append("- Each hex has 6 vertices (nodes) and 6 edges")
+            prompt_parts.append("")
+            prompt_parts.append("NODE REFERENCE:")
+            prompt_parts.append("- Node 0: Center of board (touches hexes 0,5,6)")
+            prompt_parts.append("- Nodes 1-5: Inner ring around center hex")
+            prompt_parts.append("- Nodes 6-23: Middle ring positions")
+            prompt_parts.append("- Nodes 24-53: Coastal positions")
+            prompt_parts.append("")
+            prompt_parts.append("PORT LOCATIONS (2:1 specialized trading):")
+            prompt_parts.append("- Nodes 52-53: SHEEP port (trade 2 sheep for 1 any)")
+            prompt_parts.append("- Nodes 35-36: WOOD port")  
+            prompt_parts.append("- Nodes 32-33: WHEAT port")
+            prompt_parts.append("- Nodes 40-44: BRICK port")
+            prompt_parts.append("- Nodes 28-29: ORE port")
+            prompt_parts.append("- Other coastal pairs: 3:1 ports (trade 3 of same for 1 any)")
+            prompt_parts.append("")
+            prompt_parts.append("ADJACENCY PATTERNS:")
+            prompt_parts.append("- Adjacent nodes have consecutive numbers along edges")
+            prompt_parts.append("- E.g., node 0 connects to nodes 1,5,20")
+            prompt_parts.append("- E.g., node 7 connects to nodes 6,8,24")
+            prompt_parts.append("")
+            prompt_parts.append("")
+        
         # Current game state
         prompt_parts.append("=== CURRENT GAME STATE ===")
         prompt_parts.append(f"Turn: {game_state.get('turn', 0)}")
@@ -198,6 +227,31 @@ Do not include any text before or after the JSON object. The response must be va
             
             prompt_parts.append(f"\nRobber Location: {game_state['board'].get('robber_location', 'Unknown')}")
             
+            # Add detailed hex information for initial placement
+            if game_state.get('turn', 0) <= 4 and hexes:
+                prompt_parts.append("\nKey Node-Hex Relationships:")
+                # Show some important nodes and what they touch
+                hex_by_coord = {h['coordinate']: h for h in hexes}
+                important_nodes = {
+                    0: ["(0, 0, 0)", "(0, 1, -1)", "(1, 0, -1)"],  # Center position
+                    1: ["(0, 0, 0)", "(1, -1, 0)", "(1, 0, -1)"],
+                    2: ["(0, 0, 0)", "(1, -1, 0)", "(0, -1, 1)"],
+                    3: ["(0, 0, 0)", "(0, -1, 1)", "(-1, 0, 1)"],
+                    4: ["(0, 0, 0)", "(-1, 0, 1)", "(-1, 1, 0)"],
+                    5: ["(0, 0, 0)", "(-1, 1, 0)", "(0, 1, -1)"]
+                }
+                for node, hex_coords in important_nodes.items():
+                    resources = []
+                    for coord in hex_coords:
+                        if coord in hex_by_coord:
+                            h = hex_by_coord[coord]
+                            if h['resource'] != 'desert':
+                                resources.append(f"{h['resource']}-{h['number']}")
+                            else:
+                                resources.append("desert")
+                    if resources:
+                        prompt_parts.append(f"  Node {node}: adjacent to {', '.join(resources)}")
+            
             # Current buildings
             settlements = game_state["board"].get("settlements", [])
             cities = game_state["board"].get("cities", [])
@@ -226,6 +280,7 @@ Do not include any text before or after the JSON object. The response must be va
         
         # Legal actions
         prompt_parts.append("\n=== LEGAL ACTIONS ===")
+        prompt_parts.append(f"You have {len(legal_actions)} legal actions available:")
         for i, action in enumerate(legal_actions):
             action_str = self._format_action(action)
             prompt_parts.append(f"{i}: {action_str}")
@@ -238,11 +293,42 @@ Do not include any text before or after the JSON object. The response must be va
         """Format a single action for display"""
         action_type = action.get("type", "Unknown")
         
+        # Debug log to see what we're getting
+        if action_type == "BUILD_ROAD" and "edge" not in action:
+            logger.debug(f"BUILD_ROAD action missing edge key. Full action: {action}")
+        
         # Handle Catanatron action types
         if action_type == "BUILD_SETTLEMENT":
-            return f"Build settlement at node {action.get('node', 'Unknown')}"
+            node = action.get('node', 'Unknown')
+            # Add hints for key positions during initial placement
+            hint = ""
+            # Removed hints - models should figure out what's good themselves
+            return f"Build settlement at node {node}{hint}"
         elif action_type == "BUILD_ROAD":
-            return f"Build road on edge {action.get('edge', 'Unknown')}"
+            edge = action.get('edge', None)
+            
+            # Try different keys where edge might be stored
+            if not edge:
+                edge = action.get('value', None) or action.get('params', None)
+            
+            # Fallback: try to extract from raw string if edge not found
+            if not edge and 'raw' in action:
+                raw = action['raw']
+                # Extract edge from "Action(COLOR BUILD_ROAD (n1, n2))"
+                if 'BUILD_ROAD' in raw and '(' in raw and ')' in raw:
+                    try:
+                        edge_part = raw.split('BUILD_ROAD')[1].strip()
+                        if edge_part.startswith('(') and ')' in edge_part:
+                            edge = edge_part[:edge_part.index(')')+1]
+                    except:
+                        pass
+            
+            if not edge:
+                edge = 'Unknown'
+                # Log what keys we have for debugging
+                logger.warning(f"Could not find edge in BUILD_ROAD action. Keys: {list(action.keys())}, Action: {action}")
+            
+            return f"Build road on edge {edge}"
         elif action_type == "BUILD_CITY":
             return f"Upgrade settlement to city at node {action.get('node', 'Unknown')}"
         elif action_type == "BUY_DEVELOPMENT_CARD":
@@ -506,6 +592,8 @@ class LLMPlayer:
                         elif action_type == "BUILD_ROAD":
                             # Road format: "(node1, node2)"
                             action_data["edge"] = params
+                            # Debug: log what we're getting
+                            logger.debug(f"BUILD_ROAD action: raw={action_str}, edge={params}")
                         elif action_type == "BUILD_CITY":
                             action_data["node"] = int(params) if params.isdigit() else params
                         elif action_type == "MOVE_ROBBER":

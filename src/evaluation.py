@@ -86,7 +86,7 @@ class CatanLLMEvaluator:
             
             # Update Elo ratings if LLM won
             if winner_model and loser_model:
-                self.elo_system.update_ratings(winner_model, loser_model)
+                self.elo_system.update_ratings(winner_model, loser_model, total_turns=game.state.num_turns)
             
             # Save game log
             self._save_game_log(game_log)
@@ -365,6 +365,18 @@ class CatanLLMEvaluator:
                     "edge": [str(edge[0]), str(edge[1])] if isinstance(edge, tuple) else str(edge)
                 })
         
+        # Get ports
+        ports = []
+        if hasattr(state.board, 'map') and hasattr(state.board.map, 'port_nodes'):
+            # Port nodes is a defaultdict where key is port type and value is set of node IDs
+            for port_type, node_ids in state.board.map.port_nodes.items():
+                port_type_str = str(port_type) if port_type else "THREE_TO_ONE"
+                for node_id in node_ids:
+                    ports.append({
+                        "node_id": node_id,
+                        "type": port_type_str
+                    })
+        
         return {
             "turn": state.num_turns,
             "current_player": state.colors[state.current_player_index].value,
@@ -373,7 +385,8 @@ class CatanLLMEvaluator:
                 "hexes": board_hexes,
                 "robber": robber_coord,
                 "buildings": buildings,
-                "roads": roads
+                "roads": roads,
+                "ports": ports
             }
         }
     
@@ -384,16 +397,22 @@ class CatanLLMEvaluator:
             # Convert Catanatron action to dictionary format
             action_dict = {
                 "type": action.action_type.name if hasattr(action, 'action_type') else str(action),
-                "params": str(action)
+                "raw": str(action)
             }
             
-            # Add specific parameters based on action type
-            if hasattr(action, 'node_id'):
-                action_dict["node"] = action.node_id
-            if hasattr(action, 'edge'):
-                action_dict["edge"] = action.edge
-            if hasattr(action, 'coordinate'):
-                action_dict["coordinate"] = action.coordinate
+            # Extract parameters from action.value based on action type
+            if hasattr(action, 'action_type') and hasattr(action, 'value'):
+                if action.action_type.name == "BUILD_SETTLEMENT":
+                    action_dict["node"] = action.value
+                elif action.action_type.name == "BUILD_ROAD":
+                    action_dict["edge"] = action.value
+                elif action.action_type.name == "BUILD_CITY":
+                    action_dict["node"] = action.value
+                elif action.action_type.name == "MOVE_ROBBER":
+                    action_dict["coordinate"] = action.value
+                else:
+                    # For other action types, store value as params
+                    action_dict["params"] = action.value
                 
             formatted.append(action_dict)
         return formatted
