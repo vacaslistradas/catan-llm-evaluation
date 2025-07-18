@@ -189,6 +189,27 @@ class CatanDashboard {
         // Store hex elements by coordinate for later updates
         this.hexElements = {};
         
+        // Calculate hex dimensions and grid layout
+        const hexWidth = 86;
+        const hexHeight = 100;
+        
+        // Dynamically calculate center position based on container size
+        const containerWidth = boardDisplay.clientWidth;
+        const containerHeight = boardDisplay.clientHeight;
+        
+        // Center the grid so that hex (2,2) is at the center of the container
+        // Hex (2,2) is at grid position x=3, y=2
+        const centerHexX = 3;
+        const centerHexY = 2;
+        
+        // Calculate where hex (2,2) should be positioned to be at container center
+        const containerCenterX = containerWidth / 2;
+        const containerCenterY = containerHeight / 2;
+        
+        // Calculate the offset needed to center hex (2,2)
+        const boardOffsetX = containerCenterX - (centerHexX * hexWidth + hexWidth / 2);
+        const boardOffsetY = containerCenterY - (centerHexY * hexHeight * 0.75 + hexHeight / 2);
+        
         // Create hex elements
         hexPositions.forEach((pos, index) => {
             const hex = document.createElement('div');
@@ -199,15 +220,7 @@ class CatanDashboard {
             const resource = defaultResources[index] || 'desert';
             hex.classList.add(`hex-${resource}`);
             
-            // Position the hex - proper spacing for touching hexagons
-            // Updated for better proportions: width=86px, height=100px
-            const hexWidth = 86;
-            const hexHeight = 100;
-            // For flat-topped hexagons: horizontal spacing = width
-            // Vertical spacing = height * 3/4 (they overlap vertically)
-            // Add offset to center the board in the larger container
-            const boardOffsetX = 85;
-            const boardOffsetY = 85;
+            // Position the hex using calculated offsets
             const x = boardOffsetX + pos.x * hexWidth;
             const y = boardOffsetY + pos.y * hexHeight * 0.75;
             hex.style.left = `${x}px`;
@@ -235,9 +248,32 @@ class CatanDashboard {
         const hexHeight = 100;
         const vSpacing = hexHeight * 0.75;
         
-        // Helper to get hex center using the EXACT same logic as initializeBoard
-        const boardOffsetX = 85;
-        const boardOffsetY = 85;
+        // Use the SAME dynamic centering logic as initializeBoard
+        const boardDisplay = document.getElementById('board-display');
+        const containerWidth = boardDisplay.clientWidth;
+        const containerHeight = boardDisplay.clientHeight;
+        
+        // Use the same hex positions as initializeBoard
+        const hexPositions = [
+            {coord: '(0, 0)', x: 2, y: 0}, {coord: '(1, 0)', x: 3, y: 0}, {coord: '(2, 0)', x: 4, y: 0},
+            {coord: '(0, 1)', x: 1.5, y: 1}, {coord: '(1, 1)', x: 2.5, y: 1}, {coord: '(2, 1)', x: 3.5, y: 1}, {coord: '(3, 1)', x: 4.5, y: 1},
+            {coord: '(0, 2)', x: 1, y: 2}, {coord: '(1, 2)', x: 2, y: 2}, {coord: '(2, 2)', x: 3, y: 2}, {coord: '(3, 2)', x: 4, y: 2}, {coord: '(4, 2)', x: 5, y: 2},
+            {coord: '(0, 3)', x: 1.5, y: 3}, {coord: '(1, 3)', x: 2.5, y: 3}, {coord: '(2, 3)', x: 3.5, y: 3}, {coord: '(3, 3)', x: 4.5, y: 3},
+            {coord: '(0, 4)', x: 2, y: 4}, {coord: '(1, 4)', x: 3, y: 4}, {coord: '(2, 4)', x: 4, y: 4}
+        ];
+        
+        // Center the grid so that hex (2,2) is at the center of the container (same as initializeBoard)
+        // Hex (2,2) is at grid position x=3, y=2
+        const centerHexX = 3;
+        const centerHexY = 2;
+        
+        // Calculate where hex (2,2) should be positioned to be at container center
+        const containerCenterX = containerWidth / 2;
+        const containerCenterY = containerHeight / 2;
+        
+        // Calculate the offset needed to center hex (2,2)
+        const boardOffsetX = containerCenterX - (centerHexX * hexWidth + hexWidth / 2);
+        const boardOffsetY = containerCenterY - (centerHexY * hexHeight * 0.75 + hexHeight / 2);
         const getHexCenter = (x, y) => {
             const centerX = boardOffsetX + x * hexWidth;
             const centerY = boardOffsetY + y * hexHeight * 0.75;
